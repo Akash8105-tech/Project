@@ -10,8 +10,61 @@ import urllib.error
 from PIL import Image, ImageOps
 from http.server import BaseHTTPRequestHandler
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or ""
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or ""
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY") or ""
+
+def analyze_image_with_openai(img_bytes, api_key):
+    b64_img = base64.b64encode(img_bytes).decode("utf-8")
+    url = "https://api.openai.com/v1/chat/completions"
+    prompt = (
+        "You are an expert automotive visual identification AI system. Analyze this image carefully.\n\n"
+        "AUTOMOTIVE LOGO & EMBLEM-FIRST RECOGNITION PROTOCOL:\n"
+        "1. FIRST: Scan the vehicle's front grille, hood, wheel center caps, steering wheel, and rear deck to locate and identify manufacturer LOGOS, BADGES, CRESTS, or EMBLEMS (e.g. Ferrari Prancing Horse, BMW Roundel, Porsche Crest, VW Circle, Tesla 'T', Lamborghini Raging Bull, Suzuki 'S', Mercedes Star, Audi 4 Rings, Toyota Ovals, Hyundai Slanted 'H', etc.).\n"
+        "2. Establish the brand/make from the detected logo.\n"
+        "3. SECOND: Analyze the headlights, DRL signature, grille design, body silhouette, and aerodynamic features to pinpoint the exact Model and generation.\n"
+        "4. Output ONLY a raw, valid JSON object strictly matching this schema with NO markdown code blocks:\n"
+        "{\n"
+        '  "carDetected": true,\n'
+        '  "make": "string (e.g. BMW, Ferrari, Suzuki, Porsche, Tesla)",\n'
+        '  "model": "string (e.g. M5 / 5 Series, 488 GTB, Swift, 911 Carrera, Model 3)",\n'
+        '  "detectedEmblem": "string (e.g. Ferrari Prancing Horse Shield, BMW Roundel)",\n'
+        '  "colour": "string (e.g. Metallic Silver, Crimson Red, Pearl White, Gloss Black)",\n'
+        '  "hexColor": "string (e.g. #A0A5AA, #DC2626, #F8FAFC, #18181B)",\n'
+        '  "bodyType": "string (e.g. Executive Luxury Sedan, Compact Hatchback, Supercar, Sports Coupe)",\n'
+        '  "estimatedYearRange": "string (e.g. 2020-2025)",\n'
+        '  "confidence": "string (e.g. High (98%))",\n'
+        '  "notes": "string (distinctive logo verification and design styling notes)"\n'
+        "}\n"
+        "If NO car or vehicle is visible in the image, set carDetected to false and make/model/colour to 'Not Detected'."
+    )
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}}
+                ]
+            }
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.1
+    }
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    )
+
+    with urllib.request.urlopen(req, timeout=14) as response:
+        res_data = json.loads(response.read().decode("utf-8"))
+        text = res_data["choices"][0]["message"]["content"]
+        clean_json = re.sub(r"^```json\s*", "", text.strip())
+        clean_json = re.sub(r"```$", "", clean_json.strip())
+        return json.loads(clean_json)
 
 def analyze_image_with_gemini(img_bytes, api_key):
     b64_img = base64.b64encode(img_bytes).decode("utf-8")
@@ -184,7 +237,7 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            active_key = GEMINI_API_KEY or GROQ_API_KEY
+            active_key = OPENAI_API_KEY or GEMINI_API_KEY
             self.wfile.write(json.dumps({
                 "hasKey": bool(active_key),
                 "keyType": "active" if active_key else "none"
@@ -195,7 +248,7 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(json.dumps({"status": "CarGrasp Vercel Serverless API Ready", "logoFirst": True}).encode("utf-8"))
+        self.wfile.write(json.dumps({"status": "CarGrasp OpenAI & Gemini Serverless API Ready", "logoFirst": True}).encode("utf-8"))
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -241,10 +294,20 @@ class handler(BaseHTTPRequestHandler):
             img.save(buf, format="JPEG", quality=90)
             clean_bytes = buf.getvalue()
 
-            api_key_to_use = user_key if user_key else (GEMINI_API_KEY or GROQ_API_KEY)
+            api_key_to_use = user_key if user_key else (OPENAI_API_KEY or GEMINI_API_KEY)
             result = None
 
-            if api_key_to_use and api_key_to_use.startswith("AIzaSy"):
+            # 1. Try OpenAI Vision if sk- key
+            if api_key_to_use and api_key_to_use.startswith("sk-"):
+                try:
+                    result = analyze_image_with_openai(clean_bytes, api_key_to_use)
+                    if result and isinstance(result, dict) and "make" in result:
+                        result["source"] = "openai"
+                except Exception as oe:
+                    print(f"OpenAI error: {oe}")
+
+            # 2. Try Gemini Vision if AIzaSy key
+            if not result and api_key_to_use and api_key_to_use.startswith("AIzaSy"):
                 try:
                     result = analyze_image_with_gemini(clean_bytes, api_key_to_use)
                     if result and isinstance(result, dict) and "make" in result:
@@ -252,6 +315,7 @@ class handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
+            # 3. Fallback Heuristics
             if not result or not isinstance(result, dict) or "make" not in result:
                 result = fallback_heuristic_vision(img, clean_bytes)
 

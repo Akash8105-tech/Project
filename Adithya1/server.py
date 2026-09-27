@@ -720,13 +720,13 @@ def get_env_api_key():
             with open(local_props_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line.startswith("GEMINI_API_KEY="):
+                    if line.startswith("OPENAI_API_KEY=") or line.startswith("GEMINI_API_KEY="):
                         key = line.split("=", 1)[1].strip()
                         if key and not key.startswith("YOUR_"):
                             return key
         except Exception:
             pass
-    return os.environ.get("GEMINI_API_KEY") or ""
+    return os.environ.get("OPENAI_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
 
 CURRENT_API_KEY = get_env_api_key()
 
@@ -754,7 +754,10 @@ def set_key():
         CURRENT_API_KEY = new_key
         try:
             with open(BASE_DIR / "local.properties", "w", encoding="utf-8") as f:
-                f.write(f"GEMINI_API_KEY={new_key}\n")
+                if new_key.startswith("sk-"):
+                    f.write(f"OPENAI_API_KEY={new_key}\n")
+                else:
+                    f.write(f"GEMINI_API_KEY={new_key}\n")
         except Exception:
             pass
 
@@ -763,6 +766,57 @@ def set_key():
         "hasKey": bool(CURRENT_API_KEY),
         "keyType": "active"
     })
+
+def analyze_with_openai(img_bytes, api_key):
+    b64_img = base64.b64encode(img_bytes).decode("utf-8")
+    import urllib.request
+    url = "https://api.openai.com/v1/chat/completions"
+    prompt = (
+        "You are an expert automotive visual identification AI system. Analyze this image carefully.\n\n"
+        "AUTOMOTIVE LOGO & EMBLEM-FIRST RECOGNITION PROTOCOL:\n"
+        "1. FIRST: Scan the vehicle's front grille, hood, wheel center caps, steering wheel, and rear deck to locate and identify manufacturer LOGOS, BADGES, CRESTS, or EMBLEMS (e.g. Ferrari Prancing Horse, BMW Roundel, Porsche Crest, VW Circle, Tesla 'T', Lamborghini Raging Bull, Suzuki 'S', Mercedes Star, Audi 4 Rings, Toyota Ovals, Hyundai Slanted 'H', etc.).\n"
+        "2. Establish the brand/make from the detected logo.\n"
+        "3. SECOND: Analyze the headlights, DRL signature, grille design, body silhouette, and aerodynamic features to pinpoint the exact Model and generation.\n"
+        "4. Output ONLY a raw, valid JSON object strictly matching this schema with NO markdown code blocks:\n"
+        "{\n"
+        '  "carDetected": true,\n'
+        '  "make": "string (e.g. BMW, Ferrari, Suzuki, Porsche, Tesla)",\n'
+        '  "model": "string (e.g. M5, 488 GTB, Swift, 911 Carrera, Model 3)",\n'
+        '  "detectedEmblem": "string (e.g. Ferrari Prancing Horse Shield, BMW Roundel)",\n'
+        '  "colour": "string (e.g. Metallic Silver, Crimson Red, Pearl White, Gloss Black)",\n'
+        '  "hexColor": "string (e.g. #A0A5AA, #DC2626, #F8FAFC, #18181B)",\n'
+        '  "bodyType": "string (e.g. Executive Luxury Sedan, Compact Hatchback, Supercar, Sports Coupe)",\n'
+        '  "estimatedYearRange": "string (e.g. 2020-2025)",\n'
+        '  "confidence": "string (e.g. High (98%))",\n'
+        '  "notes": "string (distinctive logo verification and design styling notes)"\n'
+        "}\n"
+        "If NO car or vehicle is visible in the image, set carDetected to false and make/model/colour to 'Not Detected'."
+    )
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}}
+                ]
+            }
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.1
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=14) as response:
+        res_data = json.loads(response.read().decode("utf-8"))
+        text = res_data["choices"][0]["message"]["content"]
+        clean_json = re.sub(r"^```json\s*", "", text.strip())
+        clean_json = re.sub(r"```$", "", clean_json.strip())
+        return json.loads(clean_json)
 
 def analyze_with_gemini(img_bytes, api_key):
     b64_img = base64.b64encode(img_bytes).decode("utf-8")
@@ -858,8 +912,22 @@ def analyze():
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         img = ImageOps.exif_transpose(img)
 
-        # Try Gemini API first if configured
+        # 1. Try OpenAI Vision if sk- key
         api_key_to_use = user_key if user_key else CURRENT_API_KEY
+        if api_key_to_use and api_key_to_use.startswith("sk-"):
+            try:
+                res = analyze_with_openai(img_bytes, api_key_to_use)
+                if res and isinstance(res, dict) and ("make" in res or "carDetected" in res):
+                    res["source"] = "openai"
+                    res["image_bytes"] = len(img_bytes)
+                    res["image_sha256"] = sha256_hash
+                    print(f"  - Resolved Source:   OPENAI GPT-4o-MINI")
+                    print(f"  - Result:            {res.get('make')} {res.get('model')} (Logo: {res.get('detectedEmblem')})")
+                    return jsonify(res)
+            except Exception as e:
+                print(f"  [!] OpenAI Vision API Notice ({e}), falling back to local CLIP...")
+
+        # 2. Try Gemini API if AIzaSy key
         if api_key_to_use and api_key_to_use.startswith("AIzaSy"):
             try:
                 res = analyze_with_gemini(img_bytes, api_key_to_use)
