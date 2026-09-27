@@ -1,0 +1,10 @@
+server.py
+test_*.py
+verify_*.py
+run_*.py
+app/
+gradle/
+cargrasp-docs/
+*.kts
+*.properties
+CARGRASP_PROJECT_COMPLETE_REPORT.txt

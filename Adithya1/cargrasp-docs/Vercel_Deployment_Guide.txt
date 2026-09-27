@@ -37,8 +37,9 @@ METHOD 1: 1-CLICK HOSTING VIA VERCEL DASHBOARD & GITHUB (RECOMMENDED)
       heuristic vision engine so it always responds!).
 
 5. Click "Deploy":
-   - In less than 60 seconds, Vercel will build and assign you a live HTTPS URL 
-     (e.g., `https://cargrasp-ai.vercel.app`).
+   - In less than 60 seconds, Vercel will build and assign you a live HTTPS URL:
+     🔥 LIVE PRODUCTION URL: https://cargrasp-ai.vercel.app
+     🔥 ALTERNATE URL: https://cargrasp-r17m9fbm9-single-a0cf.vercel.app
    - You can share this link with anyone or install it as a PWA on iOS/Android!
 
 

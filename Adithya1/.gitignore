@@ -1,0 +1,14 @@
+.vercel
+.env
+.env.local
+local.properties
+__pycache__/
+*.pyc
+.gradle/
+build/
+app/build/
+.idea/
+.DS_Store
+node_modules
+eas_*
+fetch_logs.py

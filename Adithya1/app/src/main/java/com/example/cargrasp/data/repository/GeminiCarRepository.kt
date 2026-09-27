@@ -77,6 +77,8 @@ class GeminiCarRepository(
                 - If the image contains no car, set "carDetected": false, "make": "Not Detected", "model": "Not Detected", "colour": "Not Detected", "confidence": "Uncertain", "notes": "No automobile was recognized in this photo.".
             """.trimIndent()
 
+            android.util.Log.d("CarGrasp", "[DEBUG] Preparing Gemini Vision Call: Bitmap=${bitmap.width}x${bitmap.height}, Bytes=${bitmap.byteCount}, Hash=${bitmap.hashCode()}")
+
             val inputContent = content {
                 image(bitmap)
                 text(prompt)
@@ -94,10 +96,12 @@ class GeminiCarRepository(
 
             // Parse structured JSON response
             val parsedResult = parseCarResponse(responseText)
+            android.util.Log.d("CarGrasp", "[DEBUG] Gemini AI Recognized: ${parsedResult.make} ${parsedResult.model} (${parsedResult.colour}) | Source=${parsedResult.source}")
             Result.success(parsedResult)
 
         } catch (e: Exception) {
             val friendlyMessage = mapExceptionToUserFriendlyMessage(e)
+            android.util.Log.e("CarGrasp", "[DEBUG] Gemini AI Error: $friendlyMessage", e)
             Result.failure(Exception(friendlyMessage, e))
         }
     }
@@ -122,14 +126,15 @@ class GeminiCarRepository(
             val notes = jsonObject.get("notes")?.asString?.trim() ?: ""
 
             CarAnalysisResult(
-                carDetected = carDetected,
+                detected = carDetected,
                 make = make,
                 model = model,
-                colour = colour,
+                color = colour,
                 confidence = confidence,
                 bodyType = bodyType,
-                estimatedYearRange = estimatedYearRange,
-                notes = notes
+                year = estimatedYearRange,
+                additionalDetails = notes,
+                source = "Google Gemini 1.5 Flash Vision"
             )
         } catch (e: Exception) {
             // If strict JSON parsing failed, try heuristic fallback or fallback result

@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "CarGrasp",
+    "slug": "cargrasp-ai",
+    "version": "1.0.0",
+    "owner": "akash5435",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0F1D",
+    "primaryColor": "#00E5FF",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0F1D"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cargrasp.ai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "CarGrasp requires camera access to scan vehicle make, model and logos.",
+        "NSPhotoLibraryUsageDescription": "CarGrasp needs photo access to identify cars from your gallery."
+      }
+    },
+    "android": {
+      "package": "com.cargrasp.ai",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0F1D"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c2207739-56b8-4474-9ee0-fd05cc6fc5cf"
+      }
+    }
+  }
+}

@@ -32,7 +32,10 @@ data class CarAnalysisResult(
     val confidence: Any = 95, // Supports both integer (98) or String ("High (98%)")
 
     @SerializedName("additional_details", alternate = ["notes"])
-    val additionalDetails: String = ""
+    val additionalDetails: String = "",
+
+    @SerializedName("source")
+    val source: String = "Google Gemini 1.5 Flash Vision"
 ) {
     val carDetected: Boolean get() = detected
     val colour: String get() = color
