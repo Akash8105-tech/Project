@@ -1125,6 +1125,17 @@
       }
     });
 
+    function getApiEndpoint() {
+      if (window.location.protocol === 'file:') {
+        return 'http://localhost:8080/api/analyze';
+      }
+      return '/api/analyze';
+    }
+
+    function getCloudApiEndpoint() {
+      return 'https://cargrasp-ai.vercel.app/api/analyze';
+    }
+
     async function runCarAnalysis() {
       if (!currentImageBase64) return;
 
@@ -1137,21 +1148,44 @@
       analyzeBtn.disabled = true;
 
       try {
-        console.log(`[CarGrasp Debug] Dispatching POST /api/analyze (${currentImageBase64.length} chars)...`);
-        const res = await fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey
-          },
-          body: JSON.stringify({
-            image: currentImageBase64,
-            apiKey: apiKey
-          })
-        });
+        let endpoint = getApiEndpoint();
+        console.log(`[CarGrasp] Dispatching AI Analysis (${currentImageBase64.length} chars) to ${endpoint}...`);
+        let res;
+        
+        try {
+          res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey
+            },
+            body: JSON.stringify({
+              image: currentImageBase64,
+              apiKey: apiKey
+            })
+          });
+        } catch (localErr) {
+          if (endpoint.includes('localhost') || window.location.protocol === 'file:') {
+            console.log("[CarGrasp] Localhost server offline, seamlessly routing to Cloud Vercel backend...");
+            endpoint = getCloudApiEndpoint();
+            res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+              },
+              body: JSON.stringify({
+                image: currentImageBase64,
+                apiKey: apiKey
+              })
+            });
+          } else {
+            throw localErr;
+          }
+        }
 
-        if (!res.ok) {
-          throw new Error(`Server returned HTTP ${res.status}`);
+        if (!res || !res.ok) {
+          throw new Error(`Server returned HTTP ${res ? res.status : 'Error'}`);
         }
 
         const data = await res.json();
